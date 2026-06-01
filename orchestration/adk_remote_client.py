@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 NETWORK_ADK_URL = "http://localhost:8001"
 BILLING_ADK_URL = "http://localhost:8002"
 
-def _call_a2a_service(base_url: str, agent_name: str, desc: str, message: str) -> str:
+def _call_a2a_service(base_url: str, agent_name: str, desc: str, message: str, chat_history_str: str = "") -> str:
     try:
         agent_card = f"{base_url.rstrip('/')}/.well-known/agent-card.json"
         agent = RemoteA2aAgent(
@@ -28,7 +28,8 @@ def _call_a2a_service(base_url: str, agent_name: str, desc: str, message: str) -
             auto_create_session=True
         )
         
-        content = types.Content(role="user", parts=[types.Part.from_text(text=message)])
+        full_message = f"Conversation Context:\n{chat_history_str}\n\nLatest User Query: {message}" if chat_history_str else message
+        content = types.Content(role="user", parts=[types.Part.from_text(text=full_message)])
         session_id = str(uuid.uuid4())
         events = runner.run(
             user_id="supervisor_user",
@@ -48,20 +49,22 @@ def _call_a2a_service(base_url: str, agent_name: str, desc: str, message: str) -
         logger.error(f"Error calling ADK service at {base_url}: {e}")
         return f"[ERROR calling {base_url}]: {type(e).__name__}: {e}"
 
-def call_network_diagnostics(query: str) -> str:
+def call_network_diagnostics(query: str, chat_history_str: str = "") -> str:
     """Invoke the Network Diagnostics ADK service."""
     return _call_a2a_service(
         NETWORK_ADK_URL, 
         "network_diagnostics", 
         "Remote network diagnostics agent.", 
-        query
+        query,
+        chat_history_str
     )
 
-def call_billing_resolution(query: str) -> str:
+def call_billing_resolution(query: str, chat_history_str: str = "") -> str:
     """Invoke the Billing Resolution ADK service."""
     return _call_a2a_service(
         BILLING_ADK_URL, 
         "billing_resolution", 
         "Remote billing resolution agent.", 
-        query
+        query,
+        chat_history_str
     )

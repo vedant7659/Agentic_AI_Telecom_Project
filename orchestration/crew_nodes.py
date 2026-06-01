@@ -8,10 +8,10 @@ load_dotenv()
 # We need to initialize the LLM for CrewAI
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.2)
 
-def run_comms_crew(user_query: str, agent_context: str) -> str:
+def run_comms_crew(user_query: str, agent_context: str, chat_history_str: str = "") -> str:
     """
     Runs a CrewAI sequential crew to synthesize the agent_context into a polished,
-    professional, and empathetic customer response.
+    professional, and empathetic customer response, considering conversation memory.
     """
     if not agent_context.strip():
         agent_context = "No specific facts were retrieved. Please ask the user to clarify."
@@ -20,8 +20,9 @@ def run_comms_crew(user_query: str, agent_context: str) -> str:
         role="Communications Drafter",
         goal="Draft a clear, professional, and empathetic response to the customer.",
         backstory="You are a seasoned customer support communications specialist at Prodapt AI Operations Center. You excel at turning technical facts and policy rules into easy-to-understand responses for customers.",
-        verbose=False,
+        verbose=True,
         allow_delegation=False,
+        max_iter=2,
         llm=llm
     )
 
@@ -29,13 +30,14 @@ def run_comms_crew(user_query: str, agent_context: str) -> str:
         role="Communications Reviewer",
         goal="Review and polish the drafted response to ensure tone, accuracy, and empathy.",
         backstory="You are the lead editor for customer communications. You ensure every outgoing message is perfectly formatted, polite, empathetic to customer issues, and factually aligned with the provided data.",
-        verbose=False,
+        verbose=True,
         allow_delegation=False,
+        max_iter=2,
         llm=llm
     )
 
     draft_task = Task(
-        description=f"Review the customer's original query and the raw data retrieved by our specialist systems.\n\nCustomer Query: {user_query}\n\nSystem Data Context:\n{agent_context}\n\nDraft a complete, direct response to the customer. Do not include internal system notes. Be empathetic if they are experiencing an issue.",
+        description=f"Review the conversation history, the customer's latest query, and the raw data retrieved by our specialist systems.\n\nConversation History:\n{chat_history_str}\n\nLatest Customer Query: {user_query}\n\nSystem Data Context:\n{agent_context}\n\nDraft a complete, direct response to the customer. Do not include internal system notes. Be empathetic if they are experiencing an issue. Take into account what was already said in the conversation history so you don't repeat yourself.",
         expected_output="A well-written draft response to the customer.",
         agent=drafter
     )

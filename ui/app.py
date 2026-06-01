@@ -64,8 +64,8 @@ st.sidebar.markdown("""
 |---|---|
 | Policy FAQ | LlamaIndex RAG |
 | SQL Analytics | LlamaIndex Semantic SQL |
-| Diagnostics | Google ADK (8001) |
-| Billing | Google ADK (8002) |
+| Diagnostics | Google ADK |
+| Billing | Google ADK |
 | Comms Draft | CrewAI |
 | Routing | LangGraph |
 """)
@@ -75,51 +75,49 @@ st.title("Prodapt AI Operations Center")
 st.caption("Powered by LangGraph · LlamaIndex · Google ADK · CrewAI")
 
 # --- Session State ---
-if "user_query" not in st.session_state:
-    st.session_state.user_query = ""
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 if "last_result" not in st.session_state:
     st.session_state.last_result = None
 
-# --- Query Input ---
-query = st.text_area(
-    label="Customer Inquiry",
-    placeholder="Ask anything — network issues, billing disputes, roaming costs, 5G troubleshooting...",
-    height=120,
-    key="query_input"
-)
+# --- Chat History Display ---
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
 
-# --- Submit Logic ---
-if st.button("Submit", type="primary"):
-    if query.strip():
+# --- Chat Input & Logic ---
+if prompt := st.chat_input("Ask anything — network issues, billing disputes, roaming costs, 5G troubleshooting..."):
+    # Append and render user message
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    # Process assistant response
+    with st.chat_message("assistant"):
         with st.spinner("Multi-agent system processing your inquiry..."):
             try:
-                # Invoke the LangGraph workflow
-                result = run_telecom_assistant(query)
+                # Invoke the LangGraph workflow with entire conversation history
+                result = run_telecom_assistant(st.session_state.messages)
                 st.session_state.last_result = result
-            except Exception as e:
-                st.error(f"Agent system error: {str(e)}")
+                final_response = result.get("final_response", "No response generated.")
+            except Exception:
+                final_response = "An unexpected error occurred while processing your request. Please try again or contact support if the problem persists."
+                st.error(final_response)
                 st.session_state.last_result = None
 
-# --- Results Display ---
-if st.session_state.last_result:
-    result = st.session_state.last_result
+        st.markdown(final_response)
     
-    st.markdown("### Customer Response")
-    st.success(result.get("final_response", "No response generated."))
-    
-    # Execution Trace
-    with st.expander("Agent Execution Trace", expanded=True):
-        trace = result.get("execution_trace", [])
-        if not trace:
-            st.info("No workers ran for this query.")
-        else:
-            for i, step in enumerate(trace, 1):
-                st.markdown(f"**Step {i} | {step.get('worker', 'UnknownWorker')}**")
-                output = step.get('output', '')
-                truncated = output[:500] + "..." if len(output) > 500 else output
-                st.code(truncated, language=None)
-                st.divider()
+    # Append assistant response
+    st.session_state.messages.append({"role": "assistant", "content": final_response})
 
-    # Optional Debug Context
-    with st.expander("Debug: Raw Agent Context", expanded=False):
-        st.text(result.get("agent_context", "No context available"))
+    # Optional: Display execution trace in sidebar or expander
+    if st.session_state.last_result:
+        trace = st.session_state.last_result.get("execution_trace", [])
+        if trace:
+            with st.sidebar.expander("Latest Execution Trace", expanded=False):
+                for i, step in enumerate(trace, 1):
+                    st.markdown(f"**Step {i} | {step.get('worker', 'UnknownWorker')}**")
+                    output = step.get('output', '')
+                    truncated = output[:200] + "..." if len(output) > 200 else output
+                    st.code(truncated, language=None)
+                    st.divider()
