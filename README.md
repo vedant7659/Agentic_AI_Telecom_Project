@@ -136,5 +136,3 @@ Use the password `admin123` to sign in, review pending credit approvals, and exp
 - Extend ADK tools in `adk-services/*/agent.py` with new functions for additional diagnostics or billing operations.
 
 ---
-
-Built for the Prodapt AI Operations Center capstone demonstration.
