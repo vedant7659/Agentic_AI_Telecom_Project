@@ -12,6 +12,9 @@ import sys
 import sqlite3
 import streamlit as st
 from datetime import datetime
+import io
+import csv
+import json
 
 # ── Path setup ────────────────────────────────────────────────────────────────
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
@@ -179,6 +182,30 @@ if st.button("Sign Out", type="secondary"):
     st.session_state.admin_authenticated = False
     st.rerun()
 
+# --- Sidebar admin actions: refresh, export, clear filters ---
+with st.sidebar.expander("Admin Actions", expanded=True):
+    if st.button("Refresh data", use_container_width=True):
+        st.experimental_rerun()
+
+    # Prepare CSV for download
+    _rows_for_export = get_pending_credits()
+    sio = io.StringIO()
+    writer = csv.writer(sio)
+    writer.writerow(["credit_id", "customer_id", "amount", "reason", "reference_number", "applied_at"])
+    for r in _rows_for_export:
+        writer.writerow([r.get("credit_id"), r.get("customer_id"), r.get("amount"), r.get("reason"), r.get("reference_number"), r.get("applied_at")])
+
+    st.download_button("Export pending (CSV)", data=sio.getvalue(), file_name="pending_credits.csv", mime="text/csv")
+
+    if st.button("Clear saved filters", use_container_width=True):
+        for k in ("filter_customer", "filter_min"):
+            if k in st.session_state:
+                del st.session_state[k]
+        st.experimental_rerun()
+
+    st.markdown("---")
+    st.caption("Use filters on the main page to narrow the pending queue.")
+
 st.divider()
 
 # ── Stats Row ─────────────────────────────────────────────────────────────────
@@ -216,21 +243,29 @@ with c4:
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ── Pending Credits Queue ─────────────────────────────────────────────────────
-pending = get_pending_credits()
+# Filters
+filter_col, amt_col, _ = st.columns([2, 1, 7])
+with filter_col:
+    filter_customer = st.text_input("Filter by customer ID", key="filter_customer")
+with amt_col:
+    filter_min = st.number_input("Minimum amount", min_value=0.0, value=st.session_state.get("filter_min", 0.0), key="filter_min", format="%.2f")
 
-if not pending:
+pending = get_pending_credits()
+filtered = [p for p in pending if (filter_customer.lower() in p["customer_id"].lower() if filter_customer else True) and p["amount"] >= filter_min]
+
+if not filtered:
     st.markdown("""
     <div class="empty-state">
         <div class="icon">✅</div>
-        <h3>All caught up!</h3>
-        <p>No pending credits require review right now.</p>
+        <h3>No matching items</h3>
+        <p>No pending credits match your filters.</p>
     </div>
     """, unsafe_allow_html=True)
 else:
-    st.markdown(f"### Pending Queue &nbsp; <span class='badge-pending'>{len(pending)} items</span>", unsafe_allow_html=True)
+    st.markdown(f"### Pending Queue &nbsp; <span class='badge-pending'>{len(filtered)} items</span>", unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
 
-    for credit in pending:
+    for credit in filtered:
         credit_id   = credit["credit_id"]
         customer_id = credit["customer_id"]
         amount      = credit["amount"]
@@ -275,5 +310,9 @@ else:
                     reject_credit(credit_id)
                     st.toast(f"❌ Credit #{credit_id} rejected.", icon="❌")
                     st.rerun()
+
+            # Details for power users
+            with st.expander("Details (JSON)"):
+                st.code(json.dumps(credit, indent=2), language="json")
 
         st.markdown("")  # spacing

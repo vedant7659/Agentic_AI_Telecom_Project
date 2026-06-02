@@ -2,6 +2,9 @@ import os
 import sys
 import httpx
 import streamlit as st
+import io
+import json
+from datetime import datetime
 
 # Add the project root to sys.path so we can import from orchestration
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -79,9 +82,13 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 if "last_result" not in st.session_state:
     st.session_state.last_result = None
+if "last_prompt" not in st.session_state:
+    st.session_state.last_prompt = None
 
 # --- Chat History Display ---
 for msg in st.session_state.messages:
+    ts = msg.get("timestamp")
+    label = f"{msg['role']}" + (f" • {ts}" if ts else "")
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
         
@@ -96,17 +103,21 @@ for msg in st.session_state.messages:
                     st.divider()
 
 # --- Chat Input & Logic ---
-if prompt := st.chat_input("Ask anything — network issues, billing disputes, roaming costs, 5G troubleshooting..."):
-    # Append and render user message
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
+def _timestamp():
+    return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
 
-    # Process assistant response
+def process_prompt(prompt: str):
+    if not prompt:
+        return
+    st.session_state.last_prompt = prompt
+
+    # Append user message
+    st.session_state.messages.append({"role": "user", "content": prompt, "timestamp": _timestamp()})
+
+    # Render assistant response
     with st.chat_message("assistant"):
         with st.spinner("Multi-agent system processing your inquiry..."):
             try:
-                # Invoke the LangGraph workflow with entire conversation history
                 result = run_telecom_assistant(st.session_state.messages)
                 st.session_state.last_result = result
                 final_response = result.get("final_response", "No response generated.")
@@ -116,12 +127,49 @@ if prompt := st.chat_input("Ask anything — network issues, billing disputes, r
                 st.session_state.last_result = None
 
         st.markdown(final_response)
-    
-    # Append assistant response with its execution trace
+
     trace = st.session_state.last_result.get("execution_trace", []) if st.session_state.last_result else []
     st.session_state.messages.append({
-        "role": "assistant", 
-        "content": final_response, 
-        "trace": trace
+        "role": "assistant",
+        "content": final_response,
+        "trace": trace,
+        "timestamp": _timestamp()
     })
+
+
+# Quick actions: Examples, Clear, Download
+with st.sidebar.expander("Quick Actions", expanded=True):
+    if st.button("Clear conversation"):
+        st.session_state.messages = []
+        st.session_state.last_result = None
+        st.experimental_rerun()
+
+    # Build transcript for download
+    transcript = "".join([
+        f"[{m.get('timestamp','')}] {m['role'].upper()}: {m['content']}\n\n" for m in st.session_state.messages
+    ])
+    st.download_button("Download transcript", data=transcript, file_name="transcript.txt")
+
+    st.markdown("---")
+    st.markdown("### Examples")
+    ex1, ex2, ex3 = st.columns(3)
+    with ex1:
+        if st.button("Network outage — area 415"):
+            process_prompt("There is a network outage reported in area code 415 — what could cause this and how to troubleshoot?")
+    with ex2:
+        if st.button("Billing dispute — duplicate charge"):
+            process_prompt("Customer 12345 disputes a duplicate charge of $75 on their last bill. Suggest next steps and required evidence.")
+    with ex3:
+        if st.button("5G performance degrade"):
+            process_prompt("Users report degraded 5G performance in downtown during peak hours. What diagnostics should we run?")
+
+# Chat input (kept at bottom of main column)
+if prompt := st.chat_input("Ask anything — network issues, billing disputes, roaming costs, 5G troubleshooting..."):
+    process_prompt(prompt)
+
+# Show last result details for power users
+if st.session_state.last_result:
+    with st.expander("Show last result details (JSON)"):
+        pretty = json.dumps(st.session_state.last_result, indent=2)
+        st.code(pretty, language="json")
 
