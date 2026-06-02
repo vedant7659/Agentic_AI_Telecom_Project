@@ -84,6 +84,16 @@ if "last_result" not in st.session_state:
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
+        
+        # Display trace if it exists
+        if msg.get("trace"):
+            with st.expander("🔍 View Agent Execution Trace"):
+                for i, step in enumerate(msg["trace"], 1):
+                    st.markdown(f"**Step {i} | {step.get('worker', 'UnknownWorker')}**")
+                    output = step.get('output', '')
+                    truncated = output[:200] + "..." if len(output) > 200 else output
+                    st.code(truncated, language=None)
+                    st.divider()
 
 # --- Chat Input & Logic ---
 if prompt := st.chat_input("Ask anything — network issues, billing disputes, roaming costs, 5G troubleshooting..."):
@@ -107,17 +117,11 @@ if prompt := st.chat_input("Ask anything — network issues, billing disputes, r
 
         st.markdown(final_response)
     
-    # Append assistant response
-    st.session_state.messages.append({"role": "assistant", "content": final_response})
+    # Append assistant response with its execution trace
+    trace = st.session_state.last_result.get("execution_trace", []) if st.session_state.last_result else []
+    st.session_state.messages.append({
+        "role": "assistant", 
+        "content": final_response, 
+        "trace": trace
+    })
 
-    # Optional: Display execution trace in sidebar or expander
-    if st.session_state.last_result:
-        trace = st.session_state.last_result.get("execution_trace", [])
-        if trace:
-            with st.sidebar.expander("Latest Execution Trace", expanded=False):
-                for i, step in enumerate(trace, 1):
-                    st.markdown(f"**Step {i} | {step.get('worker', 'UnknownWorker')}**")
-                    output = step.get('output', '')
-                    truncated = output[:200] + "..." if len(output) > 200 else output
-                    st.code(truncated, language=None)
-                    st.divider()

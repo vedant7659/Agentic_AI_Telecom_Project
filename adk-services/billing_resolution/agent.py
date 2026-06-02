@@ -80,6 +80,15 @@ def apply_billing_credit(customer_id: str, amount: float, reason: str) -> str:
     if status == 'APPLIED':
         new_balance = current_balance - amount
         cursor.execute("UPDATE billing_accounts SET current_balance = ? WHERE customer_id = ?", (new_balance, customer_id))
+        
+        cursor.execute(
+            "UPDATE billing_charges "
+            "SET is_duplicate_flag = 0, "
+            "    description = REPLACE(description, '(duplicate)', '(REFUNDED)') "
+            "WHERE customer_id=? AND amount=? AND (is_duplicate_flag=1 OR description LIKE '%(duplicate)%')",
+            (customer_id, amount)
+        )
+        
         res += f"Account balance updated from ${current_balance:.2f} to ${new_balance:.2f}."
     else:
         res += f"Current balance remains ${current_balance:.2f} until credit is approved."
